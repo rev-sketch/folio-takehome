@@ -46,3 +46,19 @@ function random_token(int $bytes = 16): string {
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
+function generate_readable_id(string $title): string {
+    $slug = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $title), '-'));
+    $slug = substr($slug, 0, 20);
+    $slug = rtrim($slug, '-');
+    $chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+    do {
+        $suffix = '';
+        for ($i = 0; $i < 4; $i++) {
+            $suffix .= $chars[random_int(0, strlen($chars) - 1)];
+        }
+        $readable_id = $slug . '-' . $suffix;
+        $stmt = db()->prepare('SELECT id FROM documents WHERE readable_id = ?');
+        $stmt->execute([$readable_id]);
+    } while ($stmt->fetch());
+    return $readable_id;
+}
