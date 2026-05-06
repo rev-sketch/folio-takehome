@@ -2,6 +2,7 @@
 
 require __DIR__ . '/../lib/bootstrap.php';
 require __DIR__ . '/../lib/layout.php';
+require_once __DIR__ . '/../lib/migrate.php';
 
 $staff = current_staff();
 $error = null;
@@ -13,26 +14,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($title === '' || $body === '') {
         $error = 'Title and body are required.';
     } else {
+        $publish_at = null;
+        if (!empty($_POST['publish_at'])) {
+            $publish_at = date('Y-m-d H:i:s', strtotime($_POST['publish_at']));
+        }
+
         $stmt = db()->prepare('
-            INSERT INTO documents (title, body, created_by)
-            VALUES (?, ?, ?)
+            INSERT INTO documents (title, body, created_by, publish_at)
+            VALUES (?, ?, ?, ?)
         ');
-        $stmt->execute([$title, $body, $staff['id']]);
+        $stmt->execute([$title, $body, $staff['id'], $publish_at]);
         $docId = (int) db()->lastInsertId();
 
-        audit_log('create', 'document', $docId, ['title' => $title]);
+        audit_log('create', 'document', $docId, [
+            'title' => $title,
+            'publish_at' => $publish_at,
+        ]);
+        $readable_id = generate_readable_id($title);
+        $stmt = db()->prepare('UPDATE documents SET readable_id = ? WHERE id = ?');
+        $stmt->execute([$readable_id, $docId]);;
 
         header('Location: /admin.php?created=' . $docId);
         exit;
     }
 }
 
-$docs = db()->query('
-    SELECT d.*, s.name AS creator_name
-    FROM documents d
-    JOIN staff s ON s.id = d.created_by
-    ORDER BY d.created_at DESC
-')->fetchAll();
+$q = trim($_GET['q'] ?? '');
+if ($q !== '') {
+    $stmt = db()->prepare('
+        SELECT d.*, s.name AS creator_name
+        FROM documents d
+        JOIN staff s ON s.id = d.created_by
+        WHERE d.title LIKE ?
+        ORDER BY d.created_at DESC
+    ');
+    $stmt->execute(['%' . $q . '%']);
+    $docs = $stmt->fetchAll();
+} else {
+    $docs = db()->query('
+        SELECT d.*, s.name AS creator_name
+        FROM documents d
+        JOIN staff s ON s.id = d.created_by
+        ORDER BY d.created_at DESC
+    ')->fetchAll();
+}
 
 render_header('Admin', $staff);
 ?>
@@ -59,13 +84,28 @@ render_header('Admin', $staff);
             <label for="body">Body</label>
             <textarea id="body" name="body" required></textarea>
         </div>
+        <div class="form-field">
+            <label for="publish_at">Schedule publish (optional)</label>
+            <input type="datetime-local" id="publish_at" name="publish_at">
+            <small>Leave blank to publish immediately.</small>
+        </div>
         <button type="submit" class="btn">Create document</button>
     </form>
 </section>
 
 <section class="card">
+    <section class="card">
     <h2 class="card-title">Documents</h2>
-    <?php if (empty($docs)): ?>
+    <form method="get" style="margin-bottom: 1rem; display: flex; gap: 0.5rem;">
+        <input type="text" name="q" value="<?= h($q) ?>" placeholder="Search by title…" style="flex: 1;">
+        <button type="submit" class="btn">Search</button>
+        <?php if ($q): ?>
+            <a href="/admin.php" class="btn-link">Clear</a>
+        <?php endif ?>
+    </form>
+    <?php if (empty($docs) && $q): ?>
+        <p class="empty">No documents matching "<?= h($q) ?>".</p>
+    <?php elseif (empty($docs)): ?>
         <p class="empty">No documents yet.</p>
     <?php else: ?>
         <table class="data">
@@ -73,8 +113,10 @@ render_header('Admin', $staff);
                 <tr>
                     <th>ID</th>
                     <th>Title</th>
+                    <th>Readable ID</th>
                     <th>Creator</th>
                     <th>Created</th>
+                    <th>Publishes at</th>
                     <th></th>
                 </tr>
             </thead>
@@ -83,8 +125,10 @@ render_header('Admin', $staff);
                     <tr>
                         <td class="id">#<?= (int) $d['id'] ?></td>
                         <td><?= h($d['title']) ?></td>
+                        <td><code><?= h($d['readable_id'] ?? '—') ?></code></td>
                         <td><?= h($d['creator_name']) ?></td>
                         <td><?= h($d['created_at']) ?></td>
+                        <td><?= $d['publish_at'] ? h($d['publish_at']) : '—' ?></td>
                         <td><a href="/share.php?doc=<?= (int) $d['id'] ?>" class="btn-link">Create share →</a></td>
                     </tr>
                 <?php endforeach ?>

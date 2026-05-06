@@ -2,6 +2,7 @@
 
 require __DIR__ . '/../lib/bootstrap.php';
 require __DIR__ . '/../lib/layout.php';
+require_once __DIR__ . '/../lib/migrate.php';
 
 $token = $_GET['token'] ?? '';
 
@@ -25,6 +26,23 @@ if (!$doc) {
     <?php
     render_footer();
     exit;
+}
+
+// Scheduled publishing gate
+if (!empty($doc['publish_at'])) {
+    $now = new DateTime('now');
+    $publishAt = new DateTime($doc['publish_at']);
+    if ($now < $publishAt) {
+        render_header('Not yet available');
+        ?>
+        <div class="centered-message">
+            <h1>Not yet available</h1>
+            <p>This document will be available after <?= h($doc['publish_at']) ?>.</p>
+        </div>
+        <?php
+        render_footer();
+        exit;
+    }
 }
 
 render_header($doc['title']);
