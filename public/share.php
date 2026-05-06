@@ -2,6 +2,7 @@
 
 require __DIR__ . '/../lib/bootstrap.php';
 require __DIR__ . '/../lib/layout.php';
+require_once __DIR__ . '/../lib/migrate.php';
 
 $staff = current_staff();
 $docId = (int) ($_GET['doc'] ?? 0);

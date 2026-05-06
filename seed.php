@@ -9,6 +9,7 @@ if (file_exists($dbPath)) {
 
 $pdo = db();
 $pdo->exec(file_get_contents(__DIR__ . '/schema.sql'));
+require_once __DIR__ . '/lib/migrate.php';
 
 $pdo->exec("
     INSERT INTO staff (email, name) VALUES
